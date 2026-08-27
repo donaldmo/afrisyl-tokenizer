@@ -1,0 +1,20 @@
+# Core
+regex>=2023.0.0
+tqdm>=4.65.0
+tokenizers>=0.13.0
+
+# Data & Corpus handling (optional, for training)
+datasets>=2.18.0
+pandas>=2.2.0
+
+# Text processing / Normalization
+unicodedata2>=15.1.0
+ftfy>=6.1.1
+pyyaml>=6.0.1
+sentencepiece>=0.2.0  # only for benchmarking vs BPE
+
+# Dev
+pytest>=7.4.0
+black>=24.1.0
+flake8
+transformers>=4.30.0

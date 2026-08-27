@@ -40,8 +40,9 @@ pretrained_tokenizers/
 # Data
 data/
 datasets/
-*.txt
-*.csv
+data/*.txt
+data/*.csv
+!requirements.txt
 
 # Jupyter
 .ipynb_checkpoints

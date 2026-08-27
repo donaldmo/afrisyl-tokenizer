@@ -1,6 +1,3 @@
-README.md
-
-```
 # Afrisyl-tokenizer
 
 **A syllable-aware tokenizer for African languages**
@@ -22,9 +19,8 @@ Built as part of MSc research by Nkosilomusa Ncube, Alumni WeThinkCode.
 ## Installation
 ```bash
 pip install afrisyl-tokenizer
-
-
 ```
+
 ## Quick Usage
 
 ### 1. Load Tokenizer
@@ -37,7 +33,7 @@ tok = AfriSylTokenizer(language="shona")
 # Or load custom vocab
 # tok = AfriSylTokenizer(vocab_path="path/to/ndebele_vocab.json")
 
-###Batch processing
+# Batch processing
 texts = ["ndinoda rubatsiro", "mhoroi shamwari"]
 
 batch = tok.batch_encode(
@@ -53,3 +49,4 @@ batch = tok.batch_encode(
 decoded_batch = tok.batch_decode(batch["input_ids"])
 print(decoded_batch)
 # ['ndinodarubatsiro', 'mhoroshamwari']
+```
