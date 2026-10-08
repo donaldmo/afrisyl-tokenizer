@@ -48,10 +48,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nkosilomusa-hue/afrisyl-tokenizer"
-Repository = "https://github.com/nkosilomusa-hue/afrisyl-tokenizer"
-Documentation = "https://github.com/nkosilomusa-hue/afrisyl-tokenizer#readme"
-Issues = "https://github.com/nkosilomusa-hue/afrisyl-tokenizer/issues"
+Homepage = "https://github.com/donaldmo/afrisyl-tokenizer"
+Repository = "https://github.com/donaldmo/afrisyl-tokenizer"
+Documentation = "https://github.com/donaldmo/afrisyl-tokenizer#readme"
+Issues = "https://github.com/donaldmo/afrisyl-tokenizer/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
