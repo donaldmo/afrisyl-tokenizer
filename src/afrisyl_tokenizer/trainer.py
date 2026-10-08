@@ -31,7 +31,7 @@ class AfriSylTrainer:
         vocab = specials + [tok for tok, _ in freq.most_common(self.vocab_size - len(specials))]
         data = {
             "language": self.language,
-            "version": "0.1.0",
+            "version": "0.1.2",
             "vocab": vocab,
             "token_to_id": {tok: i for i, tok in enumerate(vocab)},
             "id_to_token": {str(i): tok for i, tok in enumerate(vocab)},

@@ -9,12 +9,18 @@ class AfriSylTokenizer:
     Splits text into CV/CVC/CCV/CCVV syllables based on a language-specific vocab.
     Works for any language if you provide a syllable vocab json.
 
+    Whitespace is tokenized the way o200k (GPT-4o's tokenizer) treats it: a
+    space is baked onto the front of the following token (e.g. " ya") rather
+    than being dropped or emitted as its own token between every word. This
+    makes encode/decode fully reversible.
+
     Example:
         >>> tok = AfriSylTokenizer(language="shona")
-        >>> tok.encode("nyika yakatanga")
-        [2, 139, 82, 184, 82, 168, 124, 3]
-        >>> tok.decode([2, 139, 82, 184, 82, 168, 124, 3])
-        'nyikayakatanga'
+        >>> ids = tok.encode("nyika yakatanga")
+        >>> ids
+        [133, 198, 112, 477, 112, 175, 133, 86]
+        >>> tok.decode(ids)
+        'nyika yakatanga'
     """
 
     def __init__(self, language: str = "shona", vocab_path: Optional[Union[str, Path]] = None):
@@ -38,7 +44,7 @@ class AfriSylTokenizer:
         self.id_to_token: Dict[int, str] = {int(k): v for k, v in data["id_to_token"].items()}
         self.vocab_size: int = data["vocab_size"]
         self.language: str = data.get("language", language)
-        self.version: str = data.get("version", "0.1.0")
+        self.version: str = data.get("version", "0.1.2")
 
         # Special tokens
         specials = data["special_tokens"]
@@ -51,42 +57,85 @@ class AfriSylTokenizer:
         self.UNK_ID = self.token_to_id[self.UNK_TOKEN]
         self.BOS_ID = self.token_to_id[self.BOS_TOKEN]
         self.EOS_ID = self.token_to_id[self.EOS_TOKEN]
+        self._special_ids = {self.PAD_ID, self.UNK_ID, self.BOS_ID, self.EOS_ID}
 
-        # Tokenization rules
-        self._punctuation = ",.!?;:()'[]-"
-        self._space_chars = " \t\n\r"
+        # Byte-fallback table: "<0x00>".."<0xFF>", one token per raw byte.
+        # Anything not covered by a real vocab entry (emoji, accented
+        # letters, other scripts, ...) falls back to its UTF-8 bytes instead
+        # of a lossy <unk>, the same way byte-level BPE tokenizers like
+        # o200k always have full coverage. This means <unk> should now be
+        # essentially unreachable for real text.
+        self._byte_token_value: Dict[str, int] = {}
+        for b in range(256):
+            bt = f"<0x{b:02X}>"
+            if bt in self.token_to_id:
+                self._byte_token_value[bt] = b
+        self._has_byte_fallback = len(self._byte_token_value) == 256
 
-        # Build syllable list: longest first for greedy matching
-        syllables = [t for t in self.vocab if not t.startswith("<")]
-        self._syllables = sorted(syllables + list(self._punctuation), key=len, reverse=True)
+        # Build match list: every real vocab entry (syllables, fallback letters,
+        # digits, punctuation, whitespace atoms, and their space-prefixed
+        # siblings), longest first so greedy matching prefers the longest
+        # known token -- this is what lets a token like " ba" (space + "ba")
+        # win over matching " " and "ba" separately, the same way o200k bakes
+        # a leading space into the following token instead of emitting a
+        # standalone space token between every pair of words.
+        self._match_tokens = sorted(
+            (t for t in self.vocab if not t.startswith("<")),
+            key=len,
+            reverse=True,
+        )
+        # Fast first-character dispatch so we don't scan the whole list for
+        # every position.
+        self._by_first_char: Dict[str, List[str]] = {}
+        for tok in self._match_tokens:
+            self._by_first_char.setdefault(tok[0], []).append(tok)
 
-    def _is_skip_char(self, ch: str) -> bool:
-        return ch in self._space_chars
+    def _byte_fallback(self, ch: str) -> Optional[List[str]]:
+        """Represent one character as its UTF-8 byte tokens, if the vocab
+        has the byte-fallback table loaded."""
+        if not self._has_byte_fallback:
+            return None
+        return [f"<0x{b:02X}>" for b in ch.encode("utf-8")]
 
     def tokenize(self, text: str) -> List[str]:
-        """Convert text to list of syllable tokens."""
-        text = text.lower().strip()
+        """Convert text to list of tokens.
+
+        Whitespace is treated the way o200k (and GPT-2/GPT-4 style BPE
+        tokenizers) treat it: a space is not stripped or skipped, it is
+        matched as part of the vocabulary like any other character, so a
+        single leading space naturally fuses onto the token that follows it
+        (e.g. " mba" rather than " " + "mba"). This keeps tokenize/encode
+        fully reversible -- decode just concatenates the tokens back
+        together and the original spacing reappears.
+
+        Any character outside the vocab (emoji, accented letters, other
+        scripts, ...) falls back to its raw UTF-8 bytes rather than a lossy
+        <unk>, so tokenize/decode stays reversible for arbitrary text too.
+        """
+        text = text.lower()
         tokens: List[str] = []
         i = 0
         n = len(text)
 
         while i < n:
             ch = text[i]
-            if self._is_skip_char(ch):
-                i += 1
-                continue
+            candidates = self._by_first_char.get(ch)
 
-            # Greedy match longest syllable first
             matched = False
-            for tok in self._syllables:
-                if text.startswith(tok, i):
-                    tokens.append(tok)
-                    i += len(tok)
-                    matched = True
-                    break
+            if candidates:
+                for tok in candidates:  # already longest-first
+                    if text.startswith(tok, i):
+                        tokens.append(tok)
+                        i += len(tok)
+                        matched = True
+                        break
 
             if not matched:
-                tokens.append(self.UNK_TOKEN)
+                byte_toks = self._byte_fallback(ch)
+                if byte_toks:
+                    tokens.extend(byte_toks)
+                else:
+                    tokens.append(self.UNK_TOKEN)
                 i += 1
         return tokens
 
@@ -100,11 +149,35 @@ class AfriSylTokenizer:
         return ids
 
     def decode(self, ids: List[int], skip_special: bool = True) -> str:
-        """Convert list of token IDs back to text."""
-        tokens = [self.id_to_token.get(i, self.UNK_TOKEN) for i in ids]
-        if skip_special:
-            tokens = [t for t in tokens if not t.startswith("<")]
-        return "".join(tokens)
+        """Convert list of token IDs back to text.
+
+        Runs of byte-fallback tokens (see tokenize/_byte_fallback) are
+        regrouped and UTF-8 decoded back into the original character(s) --
+        this also correctly reconstructs multi-codepoint emoji sequences
+        (ZWJ emoji, flags, skin-tone modifiers), since UTF-8 byte
+        concatenation is associative across codepoints.
+        """
+        tokens = [
+            self.id_to_token.get(i, self.UNK_TOKEN)
+            for i in ids
+            if not (skip_special and i in self._special_ids)
+        ]
+
+        pieces: List[str] = []
+        byte_buf = bytearray()
+        for t in tokens:
+            bval = self._byte_token_value.get(t)
+            if bval is not None:
+                byte_buf.append(bval)
+                continue
+            if byte_buf:
+                pieces.append(byte_buf.decode("utf-8", errors="replace"))
+                byte_buf = bytearray()
+            pieces.append(t)
+        if byte_buf:
+            pieces.append(byte_buf.decode("utf-8", errors="replace"))
+
+        return "".join(pieces)
 
     def batch_encode(
         self,

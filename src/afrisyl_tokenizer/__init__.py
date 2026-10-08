@@ -5,7 +5,7 @@ Author: Nkosilomusa Ncube
 License: MIT
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Nkosilomusa Ncube"
 __email__ = "nkosilomusa955@gmail.com"
 __license__ = "MIT"

@@ -48,5 +48,35 @@ batch = tok.batch_encode(
 
 decoded_batch = tok.batch_decode(batch["input_ids"])
 print(decoded_batch)
-# ['ndinodarubatsiro', 'mhoroshamwari']
+# ['ndinoda rubatsiro', 'mhoroi shamwari']
+```
+
+## Whitespace handling
+Spaces are tokenized the same way o200k (GPT-4o's tokenizer) handles them:
+a space is fused onto the front of the token that follows it (e.g. `" ya"`)
+instead of being dropped or turned into its own token between every word.
+`decode(encode(text))` is fully reversible, spacing included:
+
+```python
+tok = AfriSylTokenizer(language="shona")
+ids = tok.encode("nyika yakatanga")
+tok.decode(ids) == "nyika yakatanga"  # True
+```
+
+Every syllable, fallback letter, digit and punctuation mark also has a
+space-prefixed sibling in the vocab (`"ba"` and `" ba"` are both real
+tokens), and multi-space/newline runs get their own tokens too -- the same
+trick o200k uses so whitespace doesn't need special-casing at decode time.
+
+## Emoji & other scripts
+Anything outside the vocab -- emoji, accented letters, other scripts --
+falls back to its raw UTF-8 bytes (256 `<0xXX>` byte tokens) instead of a
+lossy `<unk>`, the same way byte-level BPE tokenizers like o200k always have
+full coverage. This also correctly round-trips multi-codepoint emoji
+sequences (ZWJ family emoji, flags, skin-tone modifiers):
+
+```python
+tok = AfriSylTokenizer(language="shona")
+ids = tok.encode("mhoroi shamwari 😀🇿🇼")
+tok.decode(ids) == "mhoroi shamwari 😀🇿🇼"  # True
 ```
